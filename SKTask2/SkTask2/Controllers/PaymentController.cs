@@ -97,17 +97,53 @@ public class PaymentController : ControllerBase
             <script>setTimeout(() => window.close(), 5000);</script>", "text/html");
     }
 
-    [HttpPost("webhook")]
-    public IActionResult Webhook([FromBody] object payload)
+    [HttpGet("webhook/success/{sessionId}")]
+    public async Task<IActionResult> TriggerSuccessWebhook(string sessionId)
     {
-        Console.WriteLine("WEBHOOK RECEIVED:");
-        Console.WriteLine(payload?.ToString());
-        return Ok(new { status = "received" });
+        var transaction = await _db.Transactions.FirstOrDefaultAsync(t => t.SessionId == sessionId);
+        if (transaction == null) return NotFound($"Session {sessionId} not found");
+
+        transaction.Status = "succeeded";
+        transaction.ProcessedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        _ = Task.Run(() => TriggerWebhook(transaction));
+
+        return Ok(new
+        {
+            message = "Success webhook triggered",
+            sessionId,
+            status = "succeeded",
+            timestamp = DateTime.UtcNow
+        });
+    }
+
+    [HttpGet("webhook/fail/{sessionId}")]
+    public async Task<IActionResult> TriggerFailWebhook(string sessionId)
+    {
+        var transaction = await _db.Transactions.FirstOrDefaultAsync(t => t.SessionId == sessionId);
+        if (transaction == null) return NotFound($"Session {sessionId} not found");
+
+        transaction.Status = "failed";
+        transaction.FailureReason = "Card declined (mock)";
+        transaction.ProcessedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        _ = Task.Run(() => TriggerWebhook(transaction));
+
+        return Ok(new
+        {
+            message = "Failure webhook triggered",
+            sessionId,
+            status = "failed",
+            failure_reason = "Card declined (mock)",
+            timestamp = DateTime.UtcNow
+        });
     }
 
     private async Task TriggerWebhook(Transaction t)
     {
-        var webhookUrl = "http://localhost:5000/api/payment/webhook"; // Dev. note: Change to app URL
+        var webhookUrl = "https://webhook.site/0a6c2f46-3e29-4107-b00f-73160049376b"; // Dev. note: My own webhook from webhook.site for testing purposes
         var payload = new
         {
             event_type = "payment." + t.Status,
