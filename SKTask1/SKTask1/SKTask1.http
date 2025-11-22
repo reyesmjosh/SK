@@ -1,0 +1,6 @@
+@SKTask1_HostAddress = http://localhost:5207
+
+GET {{SKTask1_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
